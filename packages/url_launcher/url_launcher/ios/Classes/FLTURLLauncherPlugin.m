@@ -16,7 +16,9 @@ API_AVAILABLE(ios(9.0))
 
 @end
 
-@implementation FLTURLLaunchSession
+@implementation FLTURLLaunchSession {
+  BOOL _didFireResult;
+}
 
 - (instancetype)initWithUrl:url withFlutterResult:result {
   self = [super init];
@@ -34,22 +36,38 @@ API_AVAILABLE(ios(9.0))
 - (void)safariViewController:(SFSafariViewController *)controller
       didCompleteInitialLoad:(BOOL)didLoadSuccessfully API_AVAILABLE(ios(9.0)) {
   if (didLoadSuccessfully) {
-    self.flutterResult(nil);
+    [self maybeFireResult:nil];
   } else {
-    self.flutterResult([FlutterError
+    FlutterError *error = [FlutterError
         errorWithCode:@"Error"
               message:[NSString stringWithFormat:@"Error while launching %@", self.url]
-              details:nil]);
+              details:nil];
+    [self maybeFireResult:error];
   }
 }
 
 - (void)safariViewControllerDidFinish:(SFSafariViewController *)controller API_AVAILABLE(ios(9.0)) {
   [controller dismissViewControllerAnimated:YES completion:nil];
   self.didFinish();
+
+  // If this result does fire, the initial load must not have completed yet.
+  FlutterError *error = [FlutterError
+      errorWithCode:@"Error"
+            message:[NSString stringWithFormat:@"Dismissed before initial load of %@", self.url]
+            details:nil];
+  [self maybeFireResult:error];
 }
 
 - (void)close {
   [self safariViewControllerDidFinish:self.safari];
+}
+
+- (void)maybeFireResult:(FlutterError *)error {
+  @synchronized(self) {
+    if (_didFireResult) return;
+    _didFireResult = YES;
+    _flutterResult(error);
+  }
 }
 
 @end
